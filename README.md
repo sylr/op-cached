@@ -132,6 +132,10 @@ already dead.
 ## Limitations
 
 - macOS only: it links against Security.framework.
+- After a `brew upgrade`, the first read of each existing entry takes a few
+  seconds while macOS re-authorises the new binary against keychain items the
+  previous one created; later reads return to ~20ms. Run `op-cached purge` after
+  upgrading to skip it.
 - Concurrent refreshes of the same reference can race; the last writer wins.
 - The cache key uses `$OP_ACCOUNT`, not the account `op` ultimately resolves, to
   avoid paying for an `op whoami` on every read. If you change your default
