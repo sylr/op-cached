@@ -9,7 +9,7 @@ $ time op read "op://Infra/ansible vault/password"
 op read  1.02s total
 
 $ time op-cached read "op://Infra/ansible vault/password"
-op-cached read  0.04s total
+op-cached read  0.02s total
 ```
 
 ## Why `op read` is slow
@@ -44,7 +44,7 @@ Two consequences:
 Homebrew:
 
 ```console
-brew install sylr/tap/op-cached
+brew install --cask sylr/tap/op-cached
 ```
 
 Nix flake:
@@ -67,13 +67,15 @@ nix run github:sylr/op-cached -- read "op://Infra/ansible vault/password"
 ## Usage
 
 ```console
-op-cached read op://Vault/Item/field [--ttl SECONDS] [--refresh]
+op-cached read op://Vault/Item/field [--ttl DURATION] [--refresh]
 op-cached purge
+op-cached version
 ```
 
-- `--ttl SECONDS` overrides the cache lifetime for this call. Default 12h, or
-  set `OP_CACHE_TTL`.
-- `--refresh` bypasses the cache and re-reads from 1Password, updating the entry.
+- `--ttl DURATION` overrides the cache lifetime for this call, e.g. `30m`, `12h`.
+  Default 12h, or set `OP_CACHE_TTL`.
+- `--refresh` ignores any cached value, re-reads from 1Password and updates the
+  entry.
 - `purge` deletes every entry this tool created.
 
 Output is byte-identical to `op read`, trailing newline included, so it is a
@@ -89,30 +91,36 @@ ansible-playbook -i inventories/aws/<account> \
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OP_CACHE_TTL` | `43200` | Cache lifetime in seconds. |
-| `OP_CACHE_KEYCHAIN` | `~/Library/Keychains/login.keychain-db` | Keychain to store entries in. |
-| `OP_CACHE_CONFIRM` | unset | Set to `1` to create entries with `-T ""`, forcing an approval dialog on every access. |
-| `OP_ACCOUNT` | unset | Part of the cache key, so the same reference under different accounts does not collide. |
-| `XDG_CACHE_HOME` | `~/.cache` | Parent of the index file, which holds key hashes only — never secrets. |
+| `OP_CACHE_TTL` | `43200` | Cache lifetime. A bare integer is seconds; a Go duration such as `90m` also works. |
+| `OP_ACCOUNT` | unset | Read by `op` itself, and mixed into the cache key so the same reference under different accounts does not collide. |
 
 ## Security
 
-Cached values are encrypted at rest in the keychain, but understand what that
-does and does not buy you.
+Entries are stored as generic passwords in your default keychain, encrypted at
+rest. Understand what that does and does not buy you.
 
-**By default, any process running as you can read them back without a prompt.**
-The keychain ACL trusts the application that created the entry, which is
-`/usr/bin/security` — not this script. Any other program can invoke the same
-binary while your keychain is unlocked. This is a real widening compared with
-letting `op` hit the network each time, where authorization is scoped to the
-terminal session and revoked when 1Password locks.
+**Any process running as you can still read the cached values back, without a
+prompt, while your keychain is unlocked.** This is measured, not assumed:
 
-Set `OP_CACHE_CONFIRM=1` to create entries with `-T ""` instead, which removes
-that automatic trust and forces an approval dialog per access. Granting "Always
-Allow" at that dialog puts you back where you started.
+```console
+$ security find-generic-password -s op-cached -w
+<returns the data, exit 0, no prompt>
+```
 
-The payload is passed to `security` on stdin rather than in `argv`, so it is not
-visible to `ps` or to execution monitors.
+A keychain ACL binds to a code signature, and a Homebrew-installed binary is
+only ad-hoc signed, so there is no stable code identity for the ACL to restrict
+access to. Restricting it properly would need a Developer ID signature and
+notarisation, which this project does not do. Treat the cache as "encrypted on
+disk, readable by you and anything running as you".
+
+That is a real widening compared with letting `op` hit the network every time,
+where authorization is scoped to the terminal session and revoked when 1Password
+locks. It is the trade this tool makes; if it is not one you want, use
+`op inject` to batch instead.
+
+What it does avoid: the secret is never passed as a command-line argument, so it
+does not appear in `ps` output or to execution monitors — unlike a wrapper built
+around `security -w`.
 
 **The TTL governs freshness, not revocation.** Rotating a secret in 1Password
 does not invalidate a cached copy: callers can keep receiving the old value for
@@ -123,23 +131,21 @@ already dead.
 
 ## Limitations
 
-- macOS only: it depends on `/usr/bin/security` and a macOS keychain.
-- Secrets containing NUL bytes are not preserved — a shell variable cannot hold
-  them. Text secrets are fine.
+- macOS only: it links against Security.framework.
 - Concurrent refreshes of the same reference can race; the last writer wins.
-- The cache key uses `$OP_ACCOUNT`, not the resolved account, to avoid paying for
-  an `op whoami` on every read. If you change your default account, run
-  `op-cached purge`.
+- The cache key uses `$OP_ACCOUNT`, not the account `op` ultimately resolves, to
+  avoid paying for an `op whoami` on every read. If you change your default
+  account, run `op-cached purge`.
 
 ## Development
 
 ```console
-nix develop           # shellcheck, goreleaser, gh
-./test/op-cached_test.sh
+nix develop      # go, golangci-lint, goreleaser, gh
+go test ./...
 ```
 
-The test suite runs entirely against stubbed `op` and `security` binaries: it
-never touches a real keychain and never reads a real secret.
+The tests run against a fake store and a fake fetcher: they never touch a real
+keychain and never read a real secret.
 
 ## Licence
 

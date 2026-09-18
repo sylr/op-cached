@@ -7,9 +7,9 @@
 
   outputs = { self, nixpkgs }:
     let
-      # op-cached reaches the keychain through /usr/bin/security, so it is
-      # inherently Darwin-only. Exposing it elsewhere would only produce a
-      # package that fails at runtime.
+      # op-cached talks to the macOS keychain through Security.framework, so it
+      # is inherently Darwin-only. Exposing it elsewhere would only produce a
+      # package that cannot build.
       supportedSystems = [ "x86_64-darwin" "aarch64-darwin" ];
 
       forEachSupportedSystem = f:
@@ -21,36 +21,26 @@
     in
     {
       packages = forEachSupportedSystem ({ pkgs, system }: rec {
-        op-cached = pkgs.stdenv.mkDerivation {
+        op-cached = pkgs.buildGoModule {
           pname = "op-cached";
           version = "0.1.0";
 
           src = ./.;
-          dontBuild = true;
+          # Regenerate with the fake-hash trick when go.mod/go.sum change.
+          vendorHash = "sha256-kUZ2CxKfx/QeKXxix24Ld9lK50MEENuH5HS9gWY8zZo=";
 
-          nativeBuildInputs = [ pkgs.makeWrapper ];
+          # Security.framework is reached through cgo.
+          env.CGO_ENABLED = "1";
 
-          installPhase = ''
-            runHook preInstall
-            install -Dm755 op-cached $out/bin/op-cached
-            # --prefix rather than --set: /usr/bin must stay reachable, because
-            # `security` is a macOS system binary with no Nix package.
-            wrapProgram $out/bin/op-cached \
-              --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep ]}
-            runHook postInstall
-          '';
+          subPackages = [ "cmd/op-cached" ];
 
-          doInstallCheck = true;
-          installCheckPhase = ''
-            $out/bin/op-cached 2>&1 | grep -q "usage: op-cached"
-          '';
+          ldflags = [ "-s" "-w" "-X main.version=0.1.0" ];
 
           meta = with pkgs.lib; {
             description = "Cache 1Password CLI secret reads in the macOS keychain";
             homepage = "https://github.com/sylr/op-cached";
             license = licenses.mit;
             platforms = platforms.darwin;
-            maintainers = [ ];
             mainProgram = "op-cached";
           };
         };
@@ -62,10 +52,16 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             gh
-            goreleaser  # release-config check and snapshot builds
-            shellcheck  # lints op-cached and the test suite
+            go
+            golangci-lint
+            goreleaser
           ];
         };
+
+        # Per-CI-job shells, so each job pulls only what it runs.
+        ci-test = pkgs.mkShell { packages = with pkgs; [ go golangci-lint ]; };
+        ci-goreleaser-check = pkgs.mkShell { packages = [ pkgs.goreleaser ]; };
+        ci-release = pkgs.mkShell { packages = with pkgs; [ go goreleaser syft ]; };
       });
     };
 }

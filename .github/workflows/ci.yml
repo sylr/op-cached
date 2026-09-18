@@ -10,14 +10,17 @@ permissions:
   contents: read
 
 jobs:
+  # macOS runner: keychain_darwin.go is built with cgo against
+  # Security.framework, so it will not compile anywhere else.
   test:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v5
-    - name: shellcheck
-      run: shellcheck op-cached test/op-cached_test.sh
-    - name: test
-      run: ./test/op-cached_test.sh
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - run: go vet ./...
+    - run: go test -race ./...
 
   goreleaser-check:
     runs-on: ubuntu-latest

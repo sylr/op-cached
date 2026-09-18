@@ -9,18 +9,24 @@ permissions:
   contents: write
 
 jobs:
+  # Must be macOS: darwin/cgo cannot be cross-compiled from Linux, and both
+  # darwin/arm64 and darwin/amd64 are built here.
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - uses: anchore/sbom-action/download-syft@v0
     - uses: goreleaser/goreleaser-action@v6
       with:
         version: "~> v2"
         args: release --clean
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Fine-grained PAT (or App token) with contents:write on sylr/homebrew-tap.
-        # The default GITHUB_TOKEN cannot push to another repository.
+        # A token with contents:write on sylr/homebrew-tap; the default
+        # GITHUB_TOKEN cannot push to another repository.
         HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
