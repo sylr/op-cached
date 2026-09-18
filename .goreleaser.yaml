@@ -1,0 +1,46 @@
+---
+version: 2
+
+project_name: op-cached
+
+# op-cached is a shell script, not a Go program, so there is nothing to
+# compile. `meta: true` tells GoReleaser to build an archive out of the listed
+# files alone rather than expecting binaries from a `builds` section.
+archives:
+- id: default
+  meta: true
+  formats: [tar.gz]
+  name_template: "{{ .ProjectName }}_v{{ .Version }}_all"
+  files:
+  - op-cached
+  - README.md
+  - LICENSE
+
+homebrew_casks:
+- name: op-cached
+  ids:
+  - default
+  binary: op-cached
+  repository:
+    owner: sylr
+    name: homebrew-tap
+    token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+  homepage: "https://github.com/sylr/op-cached"
+  description: "Cache 1Password CLI secret reads in the macOS keychain"
+  # The script only works where the `security` binary and a macOS keychain
+  # exist; refuse to install it anywhere else rather than fail at runtime.
+  caveats: "op-cached requires the 1Password CLI (`op`) on PATH."
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - "^docs:"
+    - "^test:"
+    - "^chore:"
+
+release:
+  prerelease: auto

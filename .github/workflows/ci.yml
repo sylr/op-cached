@@ -1,0 +1,31 @@
+---
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: shellcheck
+      run: shellcheck op-cached test/op-cached_test.sh
+    - name: test
+      run: ./test/op-cached_test.sh
+
+  goreleaser-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - uses: goreleaser/goreleaser-action@v6
+      with:
+        version: "~> v2"
+        args: check
