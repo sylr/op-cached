@@ -51,6 +51,16 @@ homebrew_casks:
   homepage: "https://github.com/sylr/op-cached"
   description: "Cache 1Password CLI secret reads in the macOS keychain"
   caveats: "op-cached needs the 1Password CLI (op) on PATH."
+  # The binary is only ad-hoc signed, so a downloaded release arrives with
+  # com.apple.quarantine set. Without stripping it, Gatekeeper SIGKILLs the
+  # first invocations and adds seconds of assessment to the ones that survive --
+  # which would defeat the point of a cache that answers in 20ms.
+  hooks:
+    post:
+      install: |
+        if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/op-cached"]
+        end
 
 checksum:
   name_template: "checksums.txt"
