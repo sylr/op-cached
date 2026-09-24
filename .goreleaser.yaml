@@ -55,12 +55,17 @@ homebrew_casks:
   # com.apple.quarantine set. Without stripping it, Gatekeeper SIGKILLs the
   # first invocations and adds seconds of assessment to the ones that survive --
   # which would defeat the point of a cache that answers in 20ms.
-  hooks:
-    post:
-      install: |
-        if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/op-cached"]
-        end
+  #
+  # Homebrew deprecated free-form `postflight` blocks (what `hooks.post.install`
+  # renders) in favour of declarative `postflight_steps`, which GoReleaser does
+  # not model yet, hence the custom block. must_succeed: false keeps a missing
+  # attribute from failing the install. The custom block goes through
+  # GoReleaser's own template engine, so Homebrew's {{staged_path}} token has to
+  # be emitted as a string literal.
+  custom_block: |
+    postflight_steps do
+      run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/op-cached"], must_succeed: false
+    end
 
 checksum:
   name_template: "checksums.txt"
